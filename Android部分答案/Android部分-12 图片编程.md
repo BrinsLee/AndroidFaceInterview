@@ -18,10 +18,80 @@
 > [点击查看答案](https://www.cnblogs.com/winter-is-coming/p/9112192.html)
 
 - 2.有关Bitmap导致OOM的原因知道吗？如何优化？
+> 1) 采用低内存占用量的编码方式，推荐RGB_565
+> 2) 图片压缩，BitmapFactory.Options，我们通过inSampleSize设置缩放倍数，比如写2，即长宽变为原来的1/2，
+     图片就是原来的1/4，如果不进行缩放的话设置为1即可！但是不能一味的压缩，毕竟这个值太小 的话，图片会很模糊，
+     而且要避免图片的拉伸变形，所以需要我们在程序中动态的计算，这个 inSampleSize的合适值，
+     而Options中又有这样一个方法：inJustDecodeBounds，将该参数设置为 true后，decodeFiel并不会分配内存空间，
+     但是可以计算出原始图片的长宽，调用 options.outWidth/outHeight获取出图片的宽高，然后通过一定的算法，即可得到适合的 inSampleSize
+     
+- 栗子：
+    
+public static int caculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
+    int width = options.outWidth;
+    int height = options.outHeight;
+    int inSampleSize = 1;
+    if (width > reqWidth || height > reqHeight) {
+        int widthRadio = Math.round(width * 1.0f / reqWidth);
+        int heightRadio = Math.round(height * 1.0f / reqHeight);
+        inSampleSize = Math.max(widthRadio, heightRadio);
+    }
+    return inSampleSize;
+}
 
+
+BitmapFactory.Options options = new BitmapFactory.Options();
+options.inJustDecodeBounds = true; // 设置了此属性一定要记得将值设置为false
+Bitmap bitmap = null;
+bitmap = BitmapFactory.decodeFile(url, options);
+options.inSampleSize = computeSampleSize(options,128,128);
+options.inPreferredConfig = Bitmap.Config.ARGB_4444;
+/* 下面两个字段需要组合使用 */  
+options.inPurgeable = true;
+options.inInputShareable = true;
+options.inJustDecodeBounds = false;
+try {
+    bitmap = BitmapFactory.decodeFile(url, options);
+} catch (OutOfMemoryError e) {
+        Log.e(TAG, "OutOfMemoryError");
+}
+> 3）及时回收Bitmap对象
 > [点击查看答案](https://blog.csdn.net/u012758088/article/details/70145656)
 
 - 3.给我谈谈图片压缩。
+> 1)设置图片格式：png,无损压缩图片格式，支持Alpha通道，Android切图素材多采用此格式
+                  jpg,有损压缩图片格式，不支持Alpha
+> 2)质量压缩：质量压缩并不会改变图片在内存中的大小，仅仅会减小图片所占用的磁盘空间的大小，
+              因为质量压缩不会改变图片的分辨率，而图片在内存中的大小是根据width*height*一个像素的所占用的字节数计算的，宽高没变，
+              在内存中占用的大小自然不会变，质量压缩的原理是通过改变图片的位深和透明度来减小图片占用的磁盘空间大小，所以不适合作为缩略图
+> 3)采样率压缩：采样率压缩是通过设置BitmapFactory.Options.inSampleSize，来减小图片的分辨率，进而减小图片所占用的磁盘空间和内存大小。
+                设置的inSampleSize会导致压缩的图片的宽高都为1/inSampleSize，整体大小变为原始图片的inSampleSize平方分之一
+> 4)缩放压缩：通过减少图片的像素来降低图片的磁盘空间大小和内存大小，可以用于缓存缩略图
+                
+public void compress(View v) {
+    File sdFile = Environment.getExternalStorageDirectory();
+    File originFile = new File(sdFile, "originImg.jpg");
+    Bitmap bitmap = BitmapFactory.decodeFile(originFile.getAbsolutePath());
+    //设置缩放比
+    int radio = 8;
+    Bitmap result = Bitmap.createBitmap(bitmap.getWidth() / radio, bitmap.getHeight() / radio, Bitmap.Config.ARGB_8888);
+    Canvas canvas = new Canvas(result);
+    RectF rectF = new RectF(0, 0, bitmap.getWidth() / radio, bitmap.getHeight() / radio);
+    //将原图画在缩放之后的矩形上
+    canvas.drawBitmap(bitmap, null, rectF, null);
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    result.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+    try {
+        FileOutputStream fos = new FileOutputStream(new File(sdFile, "sizeCompress.jpg"));
+        fos.write(bos.toByteArray());
+        fos.flush();
+        fos.close();
+    } catch (FileNotFoundException e) {
+        e.printStackTrace();
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+
 
 > [点击查看答案](https://blog.csdn.net/u013928412/article/details/80358597)
 
